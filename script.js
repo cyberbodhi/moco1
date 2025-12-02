@@ -1,25 +1,44 @@
 // script.js
-const AGE_LABELS = ["18-24", "25-34", "35-44", "45-54", "55-64", "65-74", "75+"];
+// Uses Leaflet + OSM to display Monroe County precincts with age histograms.
 
-function makeAgeStrip(ageDist) {
-  let total = 0;
-  for (const lbl of AGE_LABELS) {
-    total += (ageDist[lbl] || 0);
-  }
-  if (total === 0) {
-    return "<div class='age-strip'>No age data</div>";
+function makeAgeHistogram(ageBins, ageCounts) {
+  if (!ageBins || !ageCounts || ageBins.length === 0 || ageCounts.length === 0) {
+    return "<div class='age-hist'>No age data</div>";
   }
 
-  let html = "<div class='age-strip'>";
-  for (const lbl of AGE_LABELS) {
-    const cnt = ageDist[lbl] || 0;
-    const pct = (cnt / total) * 100;
-    html += '<div class="age-segment" style="width:' + pct + '%">' +
-            '<span class="age-label">' + lbl + ' (' + cnt + ')</span>' +
-            '</div>';
+  const maxCount = Math.max(...ageCounts);
+  if (maxCount === 0) {
+    return "<div class='age-hist'>No age data</div>";
   }
-  html += "</div>";
-  return html;
+
+  const width = 260;
+  const height = 120;
+  const barPad = 2;
+  const n = ageBins.length;
+  const barWidth = Math.floor((width - (n + 1) * barPad) / n);
+
+  let svg = `<svg width="${width}" height="${height}" class="age-hist-svg">`;
+  const baseline = height - 20;
+
+  for (let i = 0; i < n; i++) {
+    const cnt = ageCounts[i] || 0;
+    const h = Math.round((cnt / maxCount) * (height - 40));
+    const x = barPad + i * (barWidth + barPad);
+    const y = baseline - h;
+
+    svg += `
+      <g>
+        <rect x="${x}" y="${y}" width="${barWidth}" height="${h}"
+              fill="#3182bd" stroke="#ffffff" stroke-width="1"></rect>
+        <text x="${x + barWidth / 2}" y="${baseline + 12}"
+              text-anchor="middle" font-size="8">${ageBins[i]}</text>
+        <text x="${x + barWidth / 2}" y="${y - 2}"
+              text-anchor="middle" font-size="8" fill="#333">${cnt}</text>
+      </g>`;
+  }
+
+  svg += "</svg>";
+  return `<div class="age-hist">${svg}</div>`;
 }
 
 function initMap() {
@@ -43,16 +62,17 @@ function initMap() {
       function onEachFeature(feature, layer) {
         const props = feature.properties || {};
         const precinctName = props['Precinct'] || 'Unknown Precinct';
-        const ageDist = props['age_dist'] || {};
-        const ageHtml = makeAgeStrip(ageDist);
+        const ageBins = props['age_bins'] || [];
+        const ageCounts = props['age_counts'] || [];
+        const histHtml = makeAgeHistogram(ageBins, ageCounts);
 
         const popupHtml = `
           <div class="popup-content">
             <h3>${precinctName}</h3>
             <div>Registered voter age distribution:</div>
-            {ageHtml}
+            ${histHtml}
           </div>
-        `.replace("{ageHtml}", ageHtml);
+        `;
 
         layer.bindPopup(popupHtml);
 
